@@ -1,7 +1,6 @@
-const { Command } = require('@sapphire/framework');
-const { s } = require('@sapphire/framework');
+import { Command } from '@sapphire/framework';
 
-class TwitterCommand extends Command {
+export class TwitterCommand extends Command {
   constructor(context, options) {
     super(context, {
       ...options,
@@ -25,13 +24,10 @@ class TwitterCommand extends Command {
       const twitterLink = new URL(rawLink)
       if (['x.com', 'twitter.com'].includes(twitterLink.host)) {
         var vxLink = new URL(twitterLink.pathname, 'https://vxtwitter.com')
+        interaction.reply({
+          content: vxLink.toString()
+        });
       }
-      interaction.reply({
-        content: vxLink.toString()
-      });
     }
   }
 }
-module.exports = {
-  TwitterCommand
-};

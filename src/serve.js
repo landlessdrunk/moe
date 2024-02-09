@@ -1,6 +1,6 @@
-const { SapphireClient } = require('@sapphire/framework');
-const { GatewayIntentBits } = require('discord.js');
-require('dotenv').config();
+import { SapphireClient } from '@sapphire/framework';
+import { GatewayIntentBits } from 'discord.js';
+import 'dotenv/config';
 
 const client = new SapphireClient({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
