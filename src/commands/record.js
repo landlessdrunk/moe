@@ -20,13 +20,15 @@ export class RecordCommand extends Command {
   }
 
   registerApplicationCommands(registry) {
-    registry.registerChatInputCommand((builder) =>
-      builder
-        .setName('wiretap')
-        .setDescription('Join a voice channel for recording')
-        .addChannelOption((o) =>
-          o.setName('channel').setDescription('Voice channel to join').addChannelTypes(ChannelType.GuildVoice).setRequired(true)
-        )
+    registry.registerChatInputCommand(
+      (builder) =>
+        builder
+          .setName('wiretap')
+          .setDescription('Join a voice channel for recording')
+          .addChannelOption((o) =>
+            o.setName('channel').setDescription('Voice channel to join').addChannelTypes(ChannelType.GuildVoice).setRequired(true)
+          ),
+      { guildIds: process.env.GUILD_IDS?.split(',') ?? [] }
     );
   }
 
