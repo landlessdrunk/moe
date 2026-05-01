@@ -16,13 +16,13 @@ function testUdp() {
 
 export class RecordCommand extends Command {
   constructor(context, options) {
-    super(context, { ...options, name: 'join', description: 'Join a voice channel for recording' });
+    super(context, { ...options, name: 'wiretap', description: 'Join a voice channel for recording' });
   }
 
   registerApplicationCommands(registry) {
     registry.registerChatInputCommand((builder) =>
       builder
-        .setName('join')
+        .setName('wiretap')
         .setDescription('Join a voice channel for recording')
         .addChannelOption((o) =>
           o.setName('channel').setDescription('Voice channel to join').addChannelTypes(ChannelType.GuildVoice).setRequired(true)
