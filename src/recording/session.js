@@ -48,7 +48,7 @@ export class RecordingSession {
   _subscribe(userId, receiver) {
     const member = this.voiceChannel.members.get(userId);
     const username = (member?.user.username ?? userId).replace(/[^a-z0-9_-]/gi, '_');
-    const filepath = join(this.outputDir, `${username}_${userId}.wav`);
+    const filepath = join(this.outputDir, `${username}_${userId}_${this.startTime}.wav`);
 
     const writer = new WavWriter(filepath, SAMPLE_RATE, CHANNELS);
     writer.write(silenceFor(Date.now() - this.startTime));
