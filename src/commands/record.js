@@ -47,15 +47,19 @@ export class RecordCommand extends Command {
     });
 
     const states = [connection.state.status];
+    const debugLines = [];
     connection.on('stateChange', (_, next) => states.push(next.status));
+    connection.on('debug', (msg) => { debugLines.push(msg); console.log('[voice]', msg); });
+    connection.on('error', (err) => { debugLines.push(`ERROR: ${err.message}`); console.error('[voice error]', err); });
 
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
     } catch {
       connection.destroy();
       const udp = await testUdp();
+      const debugSummary = debugLines.length ? '\n```\n' + debugLines.slice(-20).join('\n') + '\n```' : '';
       return interaction.editReply({
-        content: `Failed to connect to voice channel.\nStates: \`${states.join(' → ')}\`\nUDP socket test: \`${udp}\``,
+        content: `Failed to connect to voice channel.\nStates: \`${states.join(' → ')}\`\nUDP: \`${udp}\`${debugSummary}`,
       });
     }
 
