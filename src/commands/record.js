@@ -39,11 +39,17 @@ export class RecordCommand extends Command {
 
     const states = [connection.state.status];
     const debugLogs = [];
+    const seenNetworking = new WeakSet();
     connection.on('stateChange', (_, next) => {
       const detail = next.status === 'disconnected' ? `(code ${next.closeCode ?? next.reason ?? '?'})` : '';
       states.push(next.status + detail);
+      // In v0.18 debug events live on the networking sub-object
+      if (next.networking && !seenNetworking.has(next.networking)) {
+        seenNetworking.add(next.networking);
+        next.networking.on('debug', (msg) => debugLogs.push(msg));
+        next.networking.on('error', (err) => debugLogs.push(`ERR: ${err?.message ?? err}`));
+      }
     });
-    connection.on('debug', (msg) => debugLogs.push(msg));
 
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
