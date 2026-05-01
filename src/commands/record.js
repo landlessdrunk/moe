@@ -38,16 +38,21 @@ export class RecordCommand extends Command {
     });
 
     const states = [connection.state.status];
+    const debugLogs = [];
     connection.on('stateChange', (_, next) => {
       const detail = next.status === 'disconnected' ? `(code ${next.closeCode ?? next.reason ?? '?'})` : '';
       states.push(next.status + detail);
     });
+    connection.on('debug', (msg) => debugLogs.push(msg));
 
     try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+      await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
     } catch {
       connection.destroy();
-      return interaction.editReply({ content: `Failed to connect to voice channel.\nStates: ${states.join(' → ')}` });
+      const log = debugLogs.slice(-8).join('\n');
+      return interaction.editReply({
+        content: `Failed to connect to voice channel.\nStates: ${states.join(' → ')}\n\`\`\`\n${log}\n\`\`\``,
+      });
     }
 
     setSession(interaction.guildId, new RecordingSession(connection, channel));
