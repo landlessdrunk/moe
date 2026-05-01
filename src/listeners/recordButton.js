@@ -33,7 +33,8 @@ export class RecordButtonListener extends Listener {
       await interaction.update(buildControlPanel('processing'));
       const { files, stats } = await session.stopRecording();
       await this._deliver(interaction, files, stats, session);
-      deleteSession(interaction.guildId);
+      session.reset();
+      await interaction.editReply(buildControlPanel('idle'));
     } else if (interaction.customId === 'record_leave') {
       getVoiceConnection(interaction.guildId)?.destroy();
       deleteSession(interaction.guildId);
@@ -45,7 +46,7 @@ export class RecordButtonListener extends Listener {
     const diagnostics = stats.length ? '\n```\n' + stats.join('\n') + '\n```' : '';
 
     if (files.length === 0) {
-      await interaction.editReply({ content: `No audio was recorded.${diagnostics}`, components: [] });
+      await interaction.followUp({ content: `No audio was recorded.${diagnostics}` });
       return;
     }
 
@@ -54,9 +55,8 @@ export class RecordButtonListener extends Listener {
     const size = statSync(zipPath).size;
 
     if (size <= MAX_UPLOAD_BYTES) {
-      await interaction.editReply({
+      await interaction.followUp({
         content: `Recording complete! ${files.length} track(s).${diagnostics}`,
-        components: [],
         files: [zipPath],
       });
       return;
@@ -67,14 +67,12 @@ export class RecordButtonListener extends Listener {
     const sizeMB = (size / 1024 / 1024).toFixed(1);
 
     if (baseUrl) {
-      await interaction.editReply({
+      await interaction.followUp({
         content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB\nDownload: ${baseUrl}/recordings/${filename}${diagnostics}`,
-        components: [],
       });
     } else {
-      await interaction.editReply({
+      await interaction.followUp({
         content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB (too large to upload).${diagnostics}`,
-        components: [],
       });
     }
   }

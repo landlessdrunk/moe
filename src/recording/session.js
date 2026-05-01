@@ -26,6 +26,7 @@ export class RecordingSession {
     this.startTime = null;
     this.speakingEvents = 0;
     this.connStatusAtStart = null;
+    this._speakingListenerAdded = false;
   }
 
   async startRecording() {
@@ -35,18 +36,27 @@ export class RecordingSession {
     await mkdir(this.outputDir, { recursive: true });
     this.recording = true;
 
-    const receiver = this.connection.receiver;
+    if (!this._speakingListenerAdded) {
+      this._speakingListenerAdded = true;
+      const receiver = this.connection.receiver;
+      receiver.speaking.on('start', (userId) => {
+        if (!this.recording) return;
+        this.speakingEvents++;
+        const u = this.users.get(userId);
+        if (u?.opusStream && !u.opusStream.destroyed) return;
+        this._subscribe(userId, receiver);
+      });
+    }
+  }
 
-    // Only subscribe inside speaking.on('start') — at this point Discord has already
-    // sent the SSRC for this user, so the receiver can actually route packets to the stream.
-    receiver.speaking.on('start', (userId) => {
-      if (!this.recording) return;
-      this.speakingEvents++;
-
-      const u = this.users.get(userId);
-      if (u?.opusStream && !u.opusStream.destroyed) return; // already has a live stream
-      this._subscribe(userId, receiver);
-    });
+  reset() {
+    this.recording = false;
+    this.users = new Map();
+    this.outputFiles = [];
+    this.outputDir = null;
+    this.startTime = null;
+    this.speakingEvents = 0;
+    this.connStatusAtStart = null;
   }
 
   _subscribe(userId, receiver) {
