@@ -38,7 +38,10 @@ export class RecordCommand extends Command {
     });
 
     const states = [connection.state.status];
-    connection.on('stateChange', (_, next) => states.push(next.status));
+    connection.on('stateChange', (_, next) => {
+      const detail = next.status === 'disconnected' ? `(code ${next.closeCode ?? next.reason ?? '?'})` : '';
+      states.push(next.status + detail);
+    });
 
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
