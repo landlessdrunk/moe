@@ -1,4 +1,4 @@
-import { EndBehaviorType } from '@discordjs/voice';
+import { EndBehaviorType, VoiceConnectionStatus } from '@discordjs/voice';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -25,9 +25,11 @@ export class RecordingSession {
     this.outputDir = null;
     this.startTime = null;
     this.speakingEvents = 0;
+    this.connStatusAtStart = null;
   }
 
   async startRecording() {
+    this.connStatusAtStart = this.connection.state.status;
     this.startTime = Date.now();
     this.outputDir = join(RECORDINGS_BASE, `${this.voiceChannel.guild.id}_${this.startTime}`);
     await mkdir(this.outputDir, { recursive: true });
@@ -101,7 +103,8 @@ export class RecordingSession {
     await new Promise((r) => setTimeout(r, 300));
     await Promise.all([...this.users.values()].map((u) => u.writer.finalize()));
 
-    const stats = [`speaking events: ${this.speakingEvents}`, ...[...this.users.entries()].map(([userId, u]) => {
+    const readyStatus = VoiceConnectionStatus.Ready;
+    const stats = [`conn: ${this.connStatusAtStart} (ready=${readyStatus})`, `speaking events: ${this.speakingEvents}`, ...[...this.users.entries()].map(([userId, u]) => {
       const name = this.voiceChannel.members.get(userId)?.user.username ?? userId;
       return `${name}: ${u.packets} packets, ${u.decodeErrors} errors, ${u.writer.dataBytes} bytes`;
     })];
