@@ -6,11 +6,12 @@ import { WavWriter } from './wavWriter.js';
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
-const FRAME_SIZE = 960; // 20ms at 48kHz
+const FRAME_MS = 20; // one Opus frame
 const RECORDINGS_BASE = process.env.RECORDINGS_DIR ?? 'recordings';
 
 function silenceFor(ms) {
-  return Buffer.alloc(Math.max(0, Math.floor((ms / 1000) * SAMPLE_RATE * CHANNELS * 2)));
+  const bytes = Math.max(0, Math.floor((ms / 1000) * SAMPLE_RATE * CHANNELS * 2));
+  return Buffer.alloc(bytes);
 }
 
 export class RecordingSession {
@@ -20,7 +21,7 @@ export class RecordingSession {
     this.recording = false;
     // userId -> { writer, lastAudioTime, opusStream, decoder, filepath }
     this.users = new Map();
-    this.outputFiles = []; // filepaths in order of first speech
+    this.outputFiles = [];
     this.outputDir = null;
     this.startTime = null;
   }
@@ -32,10 +33,17 @@ export class RecordingSession {
     this.recording = true;
 
     const receiver = this.connection.receiver;
+
+    // Subscribe to everyone already present so we don't miss audio
+    // if speaking.start fires before or instead of after we set up the listener
+    for (const [memberId, member] of this.voiceChannel.members) {
+      if (member.user.bot) continue;
+      this._subscribe(memberId, receiver);
+    }
+
+    // Pick up anyone who joins or wasn't caught above
     receiver.speaking.on('start', (userId) => {
-      if (!this.recording) return;
-      const u = this.users.get(userId);
-      if (u?.opusStream && !u.opusStream.destroyed) return; // already has live stream
+      if (!this.recording || this.users.has(userId)) return;
       this._subscribe(userId, receiver);
     });
   }
@@ -43,31 +51,31 @@ export class RecordingSession {
   _subscribe(userId, receiver) {
     const member = this.voiceChannel.members.get(userId);
     const username = (member?.user.username ?? userId).replace(/[^a-z0-9_-]/gi, '_');
+    const filepath = join(this.outputDir, `${username}_${userId}.wav`);
 
-    let u = this.users.get(userId);
-    if (!u) {
-      const filepath = join(this.outputDir, `${username}_${userId}.wav`);
-      u = { writer: null, lastAudioTime: null, filepath, opusStream: null, decoder: null };
-      this.users.set(userId, u);
-      this.outputFiles.push(filepath);
-    }
+    const writer = new WavWriter(filepath, SAMPLE_RATE, CHANNELS);
+    // Pad silence so this track starts at the recording origin
+    writer.write(silenceFor(Date.now() - this.startTime));
 
-    // Write silence to align this track with the recording timeline
-    if (!u.writer) {
-      u.writer = new WavWriter(u.filepath, SAMPLE_RATE, CHANNELS);
-      u.writer.write(silenceFor(Date.now() - this.startTime));
-    } else if (u.lastAudioTime) {
-      u.writer.write(silenceFor(Date.now() - u.lastAudioTime));
-    }
+    const u = { writer, lastAudioTime: null, filepath };
+    this.users.set(userId, u);
+    this.outputFiles.push(filepath);
 
+    // Manual mode: stream stays open for the full recording duration
     const opusStream = receiver.subscribe(userId, {
-      end: { behavior: EndBehaviorType.AfterSilence, duration: 200 },
+      end: { behavior: EndBehaviorType.Manual },
     });
-    const decoder = new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: FRAME_SIZE });
+    const decoder = new prism.opus.Decoder({ rate: SAMPLE_RATE, channels: CHANNELS, frameSize: 960 });
 
     decoder.on('data', (chunk) => {
-      u.writer.write(chunk);
-      u.lastAudioTime = Date.now();
+      const now = Date.now();
+      // Fill wall-clock gaps (silence between utterances) so the track stays in sync
+      if (u.lastAudioTime !== null) {
+        const gap = now - u.lastAudioTime - FRAME_MS;
+        if (gap > FRAME_MS) writer.write(silenceFor(gap));
+      }
+      writer.write(chunk);
+      u.lastAudioTime = now;
     });
 
     opusStream.pipe(decoder);
@@ -79,12 +87,10 @@ export class RecordingSession {
 
   async stopRecording() {
     this.recording = false;
-    for (const u of this.users.values()) {
-      u.opusStream?.destroy();
-    }
-    // Brief drain window so any buffered PCM flushes
+    for (const u of this.users.values()) u.opusStream?.destroy();
+    // Let buffered PCM drain
     await new Promise((r) => setTimeout(r, 300));
-    await Promise.all([...this.users.values()].filter((u) => u.writer).map((u) => u.writer.finalize()));
+    await Promise.all([...this.users.values()].map((u) => u.writer.finalize()));
     return this.outputFiles;
   }
 }
