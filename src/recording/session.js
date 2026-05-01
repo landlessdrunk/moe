@@ -4,8 +4,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { WavWriter } from './wavWriter.js';
 
-const require = createRequire(import.meta.url);
-const OpusScript = require('opusscript');
+const OpusScript = createRequire(import.meta.url)('opusscript');
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
@@ -21,10 +20,11 @@ export class RecordingSession {
     this.connection = connection;
     this.voiceChannel = voiceChannel;
     this.recording = false;
-    this.users = new Map(); // userId -> { writer, decoder, opusStream, lastAudioTime, filepath, packets, decodeErrors }
+    this.users = new Map();
     this.outputFiles = [];
     this.outputDir = null;
     this.startTime = null;
+    this.speakingEvents = 0;
   }
 
   async startRecording() {
@@ -35,13 +35,14 @@ export class RecordingSession {
 
     const receiver = this.connection.receiver;
 
-    for (const [memberId, member] of this.voiceChannel.members) {
-      if (member.user.bot) continue;
-      this._subscribe(memberId, receiver);
-    }
-
+    // Only subscribe inside speaking.on('start') — at this point Discord has already
+    // sent the SSRC for this user, so the receiver can actually route packets to the stream.
     receiver.speaking.on('start', (userId) => {
-      if (!this.recording || this.users.has(userId)) return;
+      if (!this.recording) return;
+      this.speakingEvents++;
+
+      const u = this.users.get(userId);
+      if (u?.opusStream && !u.opusStream.destroyed) return; // already has a live stream
       this._subscribe(userId, receiver);
     });
   }
@@ -49,18 +50,24 @@ export class RecordingSession {
   _subscribe(userId, receiver) {
     const member = this.voiceChannel.members.get(userId);
     const username = (member?.user.username ?? userId).replace(/[^a-z0-9_-]/gi, '_');
-    const filepath = join(this.outputDir, `${username}_${userId}_${this.startTime}.wav`);
 
-    const writer = new WavWriter(filepath, SAMPLE_RATE, CHANNELS);
-    writer.write(silenceFor(Date.now() - this.startTime));
+    let u = this.users.get(userId);
+    if (!u) {
+      const filepath = join(this.outputDir, `${username}_${userId}_${this.startTime}.wav`);
+      const writer = new WavWriter(filepath, SAMPLE_RATE, CHANNELS);
+      writer.write(silenceFor(Date.now() - this.startTime));
+      u = { writer, opusStream: null, lastAudioTime: null, filepath, packets: 0, decodeErrors: 0 };
+      this.users.set(userId, u);
+      this.outputFiles.push(filepath);
+    } else if (u.lastAudioTime !== null) {
+      // Fill the silence gap since this user last spoke
+      u.writer.write(silenceFor(Date.now() - u.lastAudioTime));
+    }
 
     const decoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.AUDIO);
-    const u = { writer, decoder, opusStream: null, lastAudioTime: null, filepath, packets: 0, decodeErrors: 0 };
-    this.users.set(userId, u);
-    this.outputFiles.push(filepath);
 
     const opusStream = receiver.subscribe(userId, {
-      end: { behavior: EndBehaviorType.Manual },
+      end: { behavior: EndBehaviorType.AfterSilence, duration: 500 },
     });
     opusStream.on('error', () => {});
 
@@ -71,13 +78,18 @@ export class RecordingSession {
         const now = Date.now();
         if (u.lastAudioTime !== null) {
           const gap = now - u.lastAudioTime - FRAME_MS;
-          if (gap > FRAME_MS) writer.write(silenceFor(gap));
+          if (gap > FRAME_MS) u.writer.write(silenceFor(gap));
         }
-        writer.write(pcm);
+        u.writer.write(pcm);
         u.lastAudioTime = now;
       } catch (err) {
         u.decodeErrors++;
       }
+    });
+
+    opusStream.on('close', () => {
+      decoder.delete?.();
+      u.opusStream = null; // allow re-subscription on next speaking event
     });
 
     u.opusStream = opusStream;
@@ -89,11 +101,10 @@ export class RecordingSession {
     await new Promise((r) => setTimeout(r, 300));
     await Promise.all([...this.users.values()].map((u) => u.writer.finalize()));
 
-    const stats = [...this.users.entries()].map(([userId, u]) => {
-      const member = this.voiceChannel.members.get(userId);
-      const name = member?.user.username ?? userId;
-      return `${name}: ${u.packets} packets, ${u.decodeErrors} decode errors, ${u.writer.dataBytes} bytes`;
-    });
+    const stats = [`speaking events: ${this.speakingEvents}`, ...[...this.users.entries()].map(([userId, u]) => {
+      const name = this.voiceChannel.members.get(userId)?.user.username ?? userId;
+      return `${name}: ${u.packets} packets, ${u.decodeErrors} errors, ${u.writer.dataBytes} bytes`;
+    })];
 
     return { files: this.outputFiles, stats };
   }
