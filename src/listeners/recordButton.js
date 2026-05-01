@@ -7,7 +7,7 @@ import { buildControlPanel } from '../recording/ui.js';
 import { getSession, deleteSession } from '../recording/state.js';
 
 const BUTTON_IDS = new Set(['record_start', 'record_stop', 'record_leave']);
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 export class RecordButtonListener extends Listener {
   constructor(context, options) {
