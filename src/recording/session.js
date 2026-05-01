@@ -1,4 +1,4 @@
-import { EndBehaviorType, VoiceConnectionStatus } from '@discordjs/voice';
+import { EndBehaviorType, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -29,6 +29,9 @@ export class RecordingSession {
   }
 
   async startRecording() {
+    if (this.connection.state.status !== VoiceConnectionStatus.Ready) {
+      await entersState(this.connection, VoiceConnectionStatus.Ready, 30_000);
+    }
     this.connStatusAtStart = this.connection.state.status;
     this.startTime = Date.now();
     this.outputDir = join(RECORDINGS_BASE, `${this.voiceChannel.guild.id}_${this.startTime}`);
