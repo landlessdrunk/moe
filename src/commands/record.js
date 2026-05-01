@@ -44,6 +44,7 @@ export class RecordCommand extends Command {
       adapterCreator: interaction.guild.voiceAdapterCreator,
       selfDeaf: false,
       selfMute: true,
+      debug: true,
     });
 
     const states = [connection.state.status];
