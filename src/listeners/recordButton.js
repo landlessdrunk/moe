@@ -1,7 +1,7 @@
 import { Listener } from '@sapphire/framework';
 import { Events } from 'discord.js';
 import { getVoiceConnection } from '@discordjs/voice';
-import { createReadStream, createWriteStream, statSync } from 'node:fs';
+import { createWriteStream, statSync } from 'node:fs';
 import archiver from 'archiver';
 import { buildControlPanel } from '../recording/ui.js';
 import { getSession, deleteSession } from '../recording/state.js';
@@ -21,8 +21,9 @@ export class RecordButtonListener extends Listener {
     if (!session) return interaction.reply({ content: 'No active session.', ephemeral: true });
 
     if (interaction.customId === 'record_start') {
+      await interaction.deferUpdate();
       await session.startRecording();
-      await interaction.update(buildControlPanel('recording'));
+      await interaction.editReply(buildControlPanel('recording'));
     } else if (interaction.customId === 'record_stop') {
       await interaction.update(buildControlPanel('processing'));
       const files = await session.stopRecording();
