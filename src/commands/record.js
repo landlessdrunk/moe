@@ -1,6 +1,6 @@
 import { Command } from '@sapphire/framework';
 import { ChannelType } from 'discord.js';
-import { joinVoiceChannel } from '@discordjs/voice';
+import { joinVoiceChannel, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import { buildControlPanel } from '../recording/ui.js';
 import { getSession, setSession } from '../recording/state.js';
 import { RecordingSession } from '../recording/session.js';
@@ -26,6 +26,8 @@ export class RecordCommand extends Command {
       return interaction.reply({ content: 'Already active in this server.', ephemeral: true });
     }
 
+    await interaction.deferReply();
+
     const channel = interaction.options.getChannel('channel');
     const connection = joinVoiceChannel({
       channelId: channel.id,
@@ -35,7 +37,14 @@ export class RecordCommand extends Command {
       selfMute: true,
     });
 
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+    } catch {
+      connection.destroy();
+      return interaction.editReply({ content: 'Failed to connect to voice channel.' });
+    }
+
     setSession(interaction.guildId, new RecordingSession(connection, channel));
-    await interaction.reply(buildControlPanel('idle'));
+    await interaction.editReply(buildControlPanel('idle'));
   }
 }
