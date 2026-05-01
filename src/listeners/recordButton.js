@@ -1,13 +1,15 @@
 import { Listener } from '@sapphire/framework';
-import { Events } from 'discord.js';
+import { Events, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { getVoiceConnection } from '@discordjs/voice';
 import { createWriteStream, statSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import archiver from 'archiver';
 import { buildControlPanel } from '../recording/ui.js';
 import { getSession, deleteSession } from '../recording/state.js';
 
 const BUTTON_IDS = new Set(['record_start', 'record_stop', 'record_leave']);
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const pendingDeletions = new Map(); // key -> { outputDir, zipPath }
 
 export class RecordButtonListener extends Listener {
   constructor(context, options) {
@@ -15,7 +17,21 @@ export class RecordButtonListener extends Listener {
   }
 
   async run(interaction) {
-    if (!interaction.isButton() || !BUTTON_IDS.has(interaction.customId)) return;
+    if (!interaction.isButton()) return;
+
+    if (interaction.customId.startsWith('record_delete:')) {
+      const key = interaction.customId.slice('record_delete:'.length);
+      const entry = pendingDeletions.get(key);
+      if (!entry) return interaction.update({ content: 'Files already deleted.', components: [] });
+      await interaction.deferUpdate();
+      await rm(entry.outputDir, { recursive: true, force: true });
+      await rm(entry.zipPath, { force: true });
+      pendingDeletions.delete(key);
+      await interaction.editReply({ content: 'Recording files deleted from server.', components: [] });
+      return;
+    }
+
+    if (!BUTTON_IDS.has(interaction.customId)) return;
 
     const session = getSession(interaction.guildId);
     if (!session) return interaction.reply({ content: 'No active session.', ephemeral: true });
@@ -54,10 +70,15 @@ export class RecordButtonListener extends Listener {
     await zip(files, zipPath);
     const size = statSync(zipPath).size;
 
+    const key = `${session.voiceChannel.guild.id}_${session.startTime}`;
+    pendingDeletions.set(key, { outputDir: session.outputDir, zipPath });
+    const deleteRow = buildDeleteRow(key);
+
     if (size <= MAX_UPLOAD_BYTES) {
       await interaction.followUp({
         content: `Recording complete! ${files.length} track(s).${diagnostics}`,
         files: [zipPath],
+        components: [deleteRow],
       });
       return;
     }
@@ -69,19 +90,30 @@ export class RecordButtonListener extends Listener {
     if (baseUrl) {
       await interaction.followUp({
         content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB\nDownload: ${baseUrl}/recordings/${filename}${diagnostics}`,
+        components: [deleteRow],
       });
     } else {
       await interaction.followUp({
         content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB (too large to upload).${diagnostics}`,
+        components: [deleteRow],
       });
     }
   }
 }
 
+function buildDeleteRow(key) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`record_delete:${key}`)
+      .setLabel('Delete from server')
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
 function zip(filepaths, outputPath) {
   return new Promise((resolve, reject) => {
     const output = createWriteStream(outputPath);
-    const archive = archiver('zip', { zlib: { level: 0 } }); // no compression — audio is already compressed
+    const archive = archiver('zip', { zlib: { level: 0 } });
     output.on('close', resolve);
     archive.on('error', reject);
     archive.pipe(output);
