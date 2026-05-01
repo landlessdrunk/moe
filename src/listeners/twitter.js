@@ -18,7 +18,7 @@ export class TwitterListener extends Listener {
 
     const vxLinks = matches.map(link => {
       const url = new URL(link);
-      return new URL(url.pathname, 'https://vxtwitter.com').toString();
+      return new URL(url.pathname, 'https://fixupx.com').toString();
     });
 
     message.reply({ content: vxLinks.join('\n') });

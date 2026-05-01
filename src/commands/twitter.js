@@ -11,7 +11,7 @@ export class TwitterCommand extends Command {
 
   registerApplicationCommands(registry) {
     registry.registerChatInputCommand((builder) =>
-      builder.setName('x').setDescription('Convert x/twitter link to vxtwitter.').addStringOption((option) =>
+      builder.setName('x').setDescription('Convert x/twitter link to fixupx.').addStringOption((option) =>
         option.setName('link').setDescription('Twitter or X link').setRequired(true)
       )
     );
@@ -23,7 +23,7 @@ export class TwitterCommand extends Command {
     } else {
       const twitterLink = new URL(rawLink)
       if (['x.com', 'twitter.com'].includes(twitterLink.host)) {
-        var vxLink = new URL(twitterLink.pathname, 'https://vxtwitter.com')
+        var vxLink = new URL(twitterLink.pathname, 'https://fixupx.com')
         interaction.reply({
           content: vxLink.toString()
         });
