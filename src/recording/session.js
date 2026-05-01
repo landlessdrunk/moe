@@ -1,4 +1,4 @@
-import { EndBehaviorType, VoiceConnectionStatus, entersState } from '@discordjs/voice';
+import { EndBehaviorType } from '@discordjs/voice';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import OpusScript from 'opusscript';
@@ -25,11 +25,6 @@ export class RecordingSession {
   }
 
   async startRecording() {
-    // Ensure the voice connection is ready before subscribing
-    if (this.connection.state.status !== VoiceConnectionStatus.Ready) {
-      await entersState(this.connection, VoiceConnectionStatus.Ready, 10_000);
-    }
-
     this.startTime = Date.now();
     this.outputDir = join(RECORDINGS_BASE, `${this.voiceChannel.guild.id}_${this.startTime}`);
     await mkdir(this.outputDir, { recursive: true });

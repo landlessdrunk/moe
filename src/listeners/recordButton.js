@@ -22,8 +22,13 @@ export class RecordButtonListener extends Listener {
 
     if (interaction.customId === 'record_start') {
       await interaction.deferUpdate();
-      await session.startRecording();
-      await interaction.editReply(buildControlPanel('recording'));
+      try {
+        await session.startRecording();
+        await interaction.editReply(buildControlPanel('recording'));
+      } catch (err) {
+        console.error('startRecording failed:', err);
+        await interaction.editReply({ content: `Failed to start recording: ${err.message}`, components: [] });
+      }
     } else if (interaction.customId === 'record_stop') {
       await interaction.update(buildControlPanel('processing'));
       const files = await session.stopRecording();
