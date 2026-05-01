@@ -1,9 +1,18 @@
 import { Command } from '@sapphire/framework';
 import { ChannelType } from 'discord.js';
+import { createSocket } from 'node:dgram';
 import { joinVoiceChannel, VoiceConnectionStatus, entersState } from '@discordjs/voice';
 import { buildControlPanel } from '../recording/ui.js';
 import { getSession, setSession } from '../recording/state.js';
 import { RecordingSession } from '../recording/session.js';
+
+function testUdp() {
+  return new Promise((resolve) => {
+    const sock = createSocket('udp4');
+    sock.on('error', (err) => { sock.close(); resolve(`fail: ${err.message}`); });
+    sock.bind(0, () => { const { port } = sock.address(); sock.close(); resolve(`ok (port ${port})`); });
+  });
+}
 
 export class RecordCommand extends Command {
   constructor(context, options) {
@@ -38,26 +47,15 @@ export class RecordCommand extends Command {
     });
 
     const states = [connection.state.status];
-    const debugLogs = [];
-    const seenNetworking = new WeakSet();
-    connection.on('stateChange', (_, next) => {
-      const detail = next.status === 'disconnected' ? `(code ${next.closeCode ?? next.reason ?? '?'})` : '';
-      states.push(next.status + detail);
-      // In v0.18 debug events live on the networking sub-object
-      if (next.networking && !seenNetworking.has(next.networking)) {
-        seenNetworking.add(next.networking);
-        next.networking.on('debug', (msg) => debugLogs.push(msg));
-        next.networking.on('error', (err) => debugLogs.push(`ERR: ${err?.message ?? err}`));
-      }
-    });
+    connection.on('stateChange', (_, next) => states.push(next.status));
 
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
     } catch {
       connection.destroy();
-      const log = debugLogs.slice(-8).join('\n');
+      const udp = await testUdp();
       return interaction.editReply({
-        content: `Failed to connect to voice channel.\nStates: ${states.join(' → ')}\n\`\`\`\n${log}\n\`\`\``,
+        content: `Failed to connect to voice channel.\nStates: \`${states.join(' → ')}\`\nUDP socket test: \`${udp}\``,
       });
     }
 
