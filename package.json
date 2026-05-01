@@ -5,9 +5,7 @@
   "dependencies": {
     "@badgateway/oauth2-client": "^2.2.4",
     "opusscript": "^0.0.8",
-    "tweetnacl": "^1.0.3",
     "@discordjs/voice": "^0.18.0",
-    "@stablelib/xchacha20poly1305": "^1.0.1",
     "@sapphire/framework": "^4.8.2",
     "archiver": "^7.0.1",
     "discord.js": "^14.14.1",

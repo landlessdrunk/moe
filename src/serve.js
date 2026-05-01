@@ -1,4 +1,7 @@
+import dns from 'node:dns';
 import { SapphireClient } from '@sapphire/framework';
+
+dns.setDefaultResultOrder('ipv4first');
 import { GatewayIntentBits } from 'discord.js';
 import express from 'express';
 import { join } from 'node:path';
