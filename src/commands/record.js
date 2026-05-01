@@ -37,11 +37,14 @@ export class RecordCommand extends Command {
       selfMute: true,
     });
 
+    const states = [connection.state.status];
+    connection.on('stateChange', (_, next) => states.push(next.status));
+
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
     } catch {
       connection.destroy();
-      return interaction.editReply({ content: 'Failed to connect to voice channel.' });
+      return interaction.editReply({ content: `Failed to connect to voice channel.\nStates: ${states.join(' → ')}` });
     }
 
     setSession(interaction.guildId, new RecordingSession(connection, channel));
