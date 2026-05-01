@@ -1,8 +1,11 @@
 import { EndBehaviorType } from '@discordjs/voice';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import OpusScript from 'opusscript';
+import { createRequire } from 'node:module';
 import { WavWriter } from './wavWriter.js';
+
+const require = createRequire(import.meta.url);
+const OpusScript = require('opusscript');
 
 const SAMPLE_RATE = 48000;
 const CHANNELS = 2;
@@ -18,7 +21,7 @@ export class RecordingSession {
     this.connection = connection;
     this.voiceChannel = voiceChannel;
     this.recording = false;
-    this.users = new Map(); // userId -> { writer, decoder, lastAudioTime, filepath, opusStream }
+    this.users = new Map(); // userId -> { writer, decoder, opusStream, lastAudioTime, filepath, packets, decodeErrors }
     this.outputFiles = [];
     this.outputDir = null;
     this.startTime = null;
@@ -32,13 +35,11 @@ export class RecordingSession {
 
     const receiver = this.connection.receiver;
 
-    // Subscribe to everyone already in the channel
     for (const [memberId, member] of this.voiceChannel.members) {
       if (member.user.bot) continue;
       this._subscribe(memberId, receiver);
     }
 
-    // Pick up anyone not yet subscribed when they start speaking
     receiver.speaking.on('start', (userId) => {
       if (!this.recording || this.users.has(userId)) return;
       this._subscribe(userId, receiver);
@@ -53,19 +54,18 @@ export class RecordingSession {
     const writer = new WavWriter(filepath, SAMPLE_RATE, CHANNELS);
     writer.write(silenceFor(Date.now() - this.startTime));
 
-    // One decoder per user — opusscript is stateful
     const decoder = new OpusScript(SAMPLE_RATE, CHANNELS, OpusScript.Application.AUDIO);
-
-    const u = { writer, decoder, lastAudioTime: null, filepath, opusStream: null };
+    const u = { writer, decoder, opusStream: null, lastAudioTime: null, filepath, packets: 0, decodeErrors: 0 };
     this.users.set(userId, u);
     this.outputFiles.push(filepath);
 
     const opusStream = receiver.subscribe(userId, {
       end: { behavior: EndBehaviorType.Manual },
     });
-    opusStream.on('error', () => {}); // suppress destroy-related errors
+    opusStream.on('error', () => {});
 
     opusStream.on('data', (packet) => {
+      u.packets++;
       try {
         const pcm = Buffer.from(decoder.decode(packet));
         const now = Date.now();
@@ -76,7 +76,7 @@ export class RecordingSession {
         writer.write(pcm);
         u.lastAudioTime = now;
       } catch (err) {
-        console.error(`Decode error for ${userId}:`, err.message);
+        u.decodeErrors++;
       }
     });
 
@@ -88,6 +88,13 @@ export class RecordingSession {
     for (const u of this.users.values()) u.opusStream?.destroy();
     await new Promise((r) => setTimeout(r, 300));
     await Promise.all([...this.users.values()].map((u) => u.writer.finalize()));
-    return this.outputFiles;
+
+    const stats = [...this.users.entries()].map(([userId, u]) => {
+      const member = this.voiceChannel.members.get(userId);
+      const name = member?.user.username ?? userId;
+      return `${name}: ${u.packets} packets, ${u.decodeErrors} decode errors, ${u.writer.dataBytes} bytes`;
+    });
+
+    return { files: this.outputFiles, stats };
   }
 }

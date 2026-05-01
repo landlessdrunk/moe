@@ -31,8 +31,8 @@ export class RecordButtonListener extends Listener {
       }
     } else if (interaction.customId === 'record_stop') {
       await interaction.update(buildControlPanel('processing'));
-      const files = await session.stopRecording();
-      await this._deliver(interaction, files, session);
+      const { files, stats } = await session.stopRecording();
+      await this._deliver(interaction, files, stats, session);
       deleteSession(interaction.guildId);
     } else if (interaction.customId === 'record_leave') {
       getVoiceConnection(interaction.guildId)?.destroy();
@@ -41,9 +41,11 @@ export class RecordButtonListener extends Listener {
     }
   }
 
-  async _deliver(interaction, files, session) {
+  async _deliver(interaction, files, stats, session) {
+    const diagnostics = stats.length ? '\n```\n' + stats.join('\n') + '\n```' : '';
+
     if (files.length === 0) {
-      await interaction.editReply({ content: 'No audio was recorded.', components: [] });
+      await interaction.editReply({ content: `No audio was recorded.${diagnostics}`, components: [] });
       return;
     }
 
@@ -53,7 +55,7 @@ export class RecordButtonListener extends Listener {
 
     if (size <= MAX_UPLOAD_BYTES) {
       await interaction.editReply({
-        content: `Recording complete! ${files.length} track(s).`,
+        content: `Recording complete! ${files.length} track(s).${diagnostics}`,
         components: [],
         files: [zipPath],
       });
@@ -65,14 +67,13 @@ export class RecordButtonListener extends Listener {
     const sizeMB = (size / 1024 / 1024).toFixed(1);
 
     if (baseUrl) {
-      const url = `${baseUrl}/recordings/${filename}`;
       await interaction.editReply({
-        content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB\nDownload: ${url}`,
+        content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB\nDownload: ${baseUrl}/recordings/${filename}${diagnostics}`,
         components: [],
       });
     } else {
       await interaction.editReply({
-        content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB (too large to upload).\nSet \`DOWNLOAD_BASE_URL\` in \`.env\` to enable download links.`,
+        content: `Recording complete! ${files.length} track(s) — ${sizeMB} MB (too large to upload).${diagnostics}`,
         components: [],
       });
     }
